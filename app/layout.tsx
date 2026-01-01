@@ -2,6 +2,7 @@ import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { GoogleAnalytics } from "@/components/google-analytics"
 import { ScrollToTop } from "@/components/scroll-to-top"
 import { ScrollToTopOnNavigate } from "@/components/scroll-to-top-on-navigate"
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration"
@@ -65,6 +66,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="Dracin" />
       </head>
       <body className={`font-sans antialiased`}>
+        <GoogleAnalytics />
         <ServiceWorkerRegistration />
         <ScrollToTopOnNavigate />
         {children}
