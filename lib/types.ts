@@ -116,3 +116,31 @@ export interface DramaDetailResponse {
   timestamp: number
   success: boolean
 }
+
+// Types for allepisode API response
+export interface VideoPath {
+  quality: number
+  videoPath: string
+  isDefault: number
+  isEntry: number
+  isVipEquity: number
+}
+
+export interface CdnInfo {
+  cdnDomain: string
+  isDefault: number
+  videoPathList: VideoPath[]
+}
+
+export interface AllEpisode {
+  chapterId: string
+  chapterIndex: number
+  chapterName: string
+  chapterImg: string
+  chapterType: number
+  isCharge: number
+  cdnList: CdnInfo[]
+  viewingDuration: number
+  chargeChapter: boolean
+}
+

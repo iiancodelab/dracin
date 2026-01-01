@@ -1,4 +1,4 @@
-import { Drama, SearchDrama, DramaDetailResponse } from './types'
+import { Drama, SearchDrama, DramaDetailResponse, Chapter, AllEpisode } from './types'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.dramabox.com/api'
 
@@ -76,3 +76,19 @@ export async function getDramaDetail(bookId: string): Promise<DramaDetailRespons
 
   return response.json()
 }
+
+/**
+ * Get all episodes for a drama (includes all video URLs)
+ */
+export async function getAllEpisodes(bookId: string): Promise<AllEpisode[]> {
+  const response = await fetch(`${API_BASE_URL}/allepisode?bookId=${bookId}`, {
+    next: { revalidate: 300 } // Cache for 5 minutes
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch all episodes: ${response.status}`)
+  }
+
+  return response.json()
+}
+

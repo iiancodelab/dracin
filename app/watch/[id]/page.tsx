@@ -1,4 +1,4 @@
-import { getDramaDetail } from "@/lib/api"
+import { getDramaDetail, getAllEpisodes } from "@/lib/api"
 import { Play, ArrowLeft, ChevronLeft, ChevronRight, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -24,29 +24,48 @@ function formatDuration(seconds: number): string {
 export default async function WatchPage({ params, searchParams }: WatchPageProps) {
   const { id } = await params
   const { ep } = await searchParams
-  const episodeIndex = parseInt(ep || '1', 10)
+  const episodeIndex = parseInt(ep || '0', 10)
 
   let dramaData
+  let allEpisodes
   try {
-    dramaData = await getDramaDetail(id)
+    // Fetch drama details and all episodes in parallel
+    [dramaData, allEpisodes] = await Promise.all([
+      getDramaDetail(id),
+      getAllEpisodes(id)
+    ])
   } catch (error) {
     notFound()
   }
 
-  if (!dramaData?.data?.book || !dramaData?.data?.chapterList) {
+  if (!dramaData?.data?.book || !allEpisodes || allEpisodes.length === 0) {
     notFound()
   }
 
-  const { book, chapterList } = dramaData.data
+  const { book } = dramaData.data
 
-  // Find the current episode
-  const currentEpisode = chapterList.find(ch => ch.index === episodeIndex) || chapterList[0]
-  const currentEpisodeIdx = chapterList.findIndex(ch => ch.id === currentEpisode.id)
-  const prevEpisode = currentEpisodeIdx > 0 ? chapterList[currentEpisodeIdx - 1] : null
-  const nextEpisode = currentEpisodeIdx < chapterList.length - 1 ? chapterList[currentEpisodeIdx + 1] : null
+  // Find the current episode using chapterIndex
+  const currentEpisode = allEpisodes.find(ep => ep.chapterIndex === episodeIndex) || allEpisodes[0]
+  const currentEpisodeIdx = allEpisodes.findIndex(ep => ep.chapterId === currentEpisode.chapterId)
+  const prevEpisode = currentEpisodeIdx > 0 ? allEpisodes[currentEpisodeIdx - 1] : null
+  const nextEpisode = currentEpisodeIdx < allEpisodes.length - 1 ? allEpisodes[currentEpisodeIdx + 1] : null
 
-  // Get video URL (prefer m3u8 for streaming, fallback to mp4)
-  const videoUrl = currentEpisode.m3u8Url || currentEpisode.mp4 || null
+  // Extract video URL from cdnList - get default quality (720p) or first available
+  const getVideoUrl = () => {
+    if (!currentEpisode.cdnList || currentEpisode.cdnList.length === 0) return null
+
+    const defaultCdn = currentEpisode.cdnList.find(cdn => cdn.isDefault === 1) || currentEpisode.cdnList[0]
+    if (!defaultCdn.videoPathList || defaultCdn.videoPathList.length === 0) return null
+
+    // Try to get 720p (default) or fall back to any available
+    const defaultVideo = defaultCdn.videoPathList.find(v => v.isDefault === 1)
+      || defaultCdn.videoPathList.find(v => v.quality === 720)
+      || defaultCdn.videoPathList[0]
+
+    return defaultVideo?.videoPath || null
+  }
+
+  const videoUrl = getVideoUrl()
 
   return (
     <div className="min-h-screen bg-black">
@@ -59,7 +78,7 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
           </Link>
           <div className="flex-1 text-center">
             <h1 className="text-sm font-medium text-white truncate max-w-md mx-auto">
-              {book.bookName} - Episode {currentEpisode.index}
+              {book.bookName} - Episode {currentEpisode.chapterIndex}
             </h1>
           </div>
           <div className="w-20" />
@@ -71,9 +90,9 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
         <div className="relative w-full max-w-6xl mx-auto">
           <div className="relative aspect-video bg-black">
             <VideoPlayer
-              key={currentEpisode.id}
+              key={currentEpisode.chapterId}
               src={videoUrl}
-              poster={currentEpisode.cover}
+              poster={currentEpisode.chapterImg}
               autoPlay={true}
             />
           </div>
@@ -81,7 +100,7 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
           {/* Episode Navigation */}
           <div className="flex items-center justify-between p-4 bg-black/50">
             {prevEpisode ? (
-              <Link href={`/watch/${id}?ep=${prevEpisode.index}`}>
+              <Link href={`/watch/${id}?ep=${prevEpisode.chapterIndex}`}>
                 <Button variant="ghost" size="sm" className="text-white hover:text-white hover:bg-white/20">
                   <ChevronLeft className="h-4 w-4 mr-1" />
                   Prev
@@ -92,12 +111,12 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
             )}
 
             <div className="text-center">
-              <p className="text-white font-medium">Episode {currentEpisode.index}</p>
-              <p className="text-sm text-white/60">{currentEpisode.name}</p>
+              <p className="text-white font-medium">Episode {currentEpisode.chapterIndex}</p>
+              <p className="text-sm text-white/60">{currentEpisode.chapterName}</p>
             </div>
 
             {nextEpisode ? (
-              <Link href={`/watch/${id}?ep=${nextEpisode.index}`}>
+              <Link href={`/watch/${id}?ep=${nextEpisode.chapterIndex}`}>
                 <Button variant="ghost" size="sm" className="text-white hover:text-white hover:bg-white/20">
                   Next
                   <ChevronRight className="h-4 w-4 ml-1" />
@@ -124,7 +143,7 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
                   <h2 className="text-xl font-bold text-white mb-1">{book.bookName}</h2>
                 </Link>
                 <p className="text-white/60 text-sm mb-3">
-                  Episode {currentEpisode.index}: {currentEpisode.name}
+                  Episode {currentEpisode.chapterIndex}: {currentEpisode.chapterName}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {book.tags?.slice(0, 3).map((tag, index) => (
@@ -140,22 +159,22 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
           {/* Episode List */}
           <div>
             <h3 className="text-lg font-semibold text-white mb-4">
-              All Episodes ({chapterList.length})
+              All Episodes ({allEpisodes.length})
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              {chapterList.map((chapter) => {
-                const isCurrentEpisode = chapter.id === currentEpisode.id
+              {allEpisodes.map((episode) => {
+                const isCurrentEpisode = episode.chapterId === currentEpisode.chapterId
                 return (
                   <Link
-                    key={chapter.id}
-                    href={`/watch/${id}?ep=${chapter.index}`}
+                    key={episode.chapterId}
+                    href={`/watch/${id}?ep=${episode.chapterIndex}`}
                     className={`group relative rounded-lg overflow-hidden ${isCurrentEpisode ? 'ring-2 ring-accent' : ''
                       }`}
                   >
                     <div className="relative aspect-video bg-white/5">
                       <img
-                        src={chapter.cover}
-                        alt={chapter.name}
+                        src={episode.chapterImg}
+                        alt={episode.chapterName}
                         className="w-full h-full object-cover transition-transform group-hover:scale-105"
                       />
                       {isCurrentEpisode && (
@@ -168,16 +187,10 @@ export default async function WatchPage({ params, searchParams }: WatchPageProps
                           <Play className="h-8 w-8 text-white fill-current" />
                         </div>
                       )}
-                      {chapter.new && !isCurrentEpisode && (
-                        <Badge className="absolute top-1 right-1 bg-accent text-xs py-0">NEW</Badge>
-                      )}
-                      <div className="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">
-                        {formatDuration(chapter.duration)}
-                      </div>
                     </div>
                     <div className="p-2 bg-white/5">
-                      <p className="text-sm font-medium text-white truncate">Ep {chapter.index}</p>
-                      <p className="text-xs text-white/60 truncate">{chapter.name}</p>
+                      <p className="text-sm font-medium text-white truncate">Ep {episode.chapterIndex}</p>
+                      <p className="text-xs text-white/60 truncate">{episode.chapterName}</p>
                     </div>
                   </Link>
                 )
